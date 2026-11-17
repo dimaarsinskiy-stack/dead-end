@@ -2,7 +2,6 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="screen-orientation" content="landscape">
     <style>
         body { margin: 0; overflow: hidden; background: #111; touch-action: none; }
         canvas { display: block; }
@@ -16,13 +15,12 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // Игрок
-        let player = { x: canvas.width / 2, y: canvas.height / 2, size: 30, speed: 5 };
-        // Сосед (враг)
-        let enemy = { x: canvas.width / 2, y: 100, size: 30, health: 3, alive: true };
+        let player = { x: canvas.width / 2, y: canvas.height / 2, size: 30, angle: 0 };
+        let bullets = [];
         
         let moveTouch = null;
         let aimTouch = null;
+        let shootTimer = 0;
 
         canvas.addEventListener('touchstart', (e) => {
             for (let touch of e.changedTouches) {
@@ -30,11 +28,6 @@
                     moveTouch = { id: touch.identifier, lastX: touch.clientX, lastY: touch.clientY };
                 } else {
                     aimTouch = { id: touch.identifier, x: touch.clientX, y: touch.clientY };
-                    // Если нажал близко к врагу — бьем
-                    if (enemy.alive && Math.hypot(player.x - enemy.x, player.y - enemy.y) < 60) {
-                        enemy.health--;
-                        if (enemy.health <= 0) enemy.alive = false;
-                    }
                 }
             }
         });
@@ -46,7 +39,7 @@
                     let dy = touch.clientY - moveTouch.lastY;
                     player.x += dx * 0.2;
                     player.y += dy * 0.2;
-                    // Ограничение по краям экрана
+                    // Ограничение экрана
                     player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
                     player.y = Math.max(20, Math.min(canvas.height - 20, player.y));
                     moveTouch.lastX = touch.clientX;
@@ -66,39 +59,68 @@
             }
         });
 
+        function shoot() {
+            if (!aimTouch) return;
+            let dx = aimTouch.x - player.x;
+            let dy = aimTouch.y - player.y;
+            let dist = Math.hypot(dx, dy);
+            if (dist === 0) return;
+            bullets.push({
+                x: player.x,
+                y: player.y,
+                vx: (dx / dist) * 10,
+                vy: (dy / dist) * 10
+            });
+        }
+
         function gameLoop() {
-            // Фон (пол и стены)
             ctx.fillStyle = '#222';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.strokeStyle = '#444';
             ctx.strokeRect(0, 0, canvas.width, canvas.height);
 
-            // Игрок
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(player.x - player.size/2, player.y - player.size/2, player.size, player.size);
-            // Картонная маска
-            ctx.fillStyle = '#a67c52';
-            ctx.fillRect(player.x - player.size/2, player.y - player.size/2, player.size, player.size/3);
-
-            // Враг
-            if (enemy.alive) {
-                ctx.fillStyle = '#d32f2f';
-                ctx.fillRect(enemy.x - enemy.size/2, enemy.y - enemy.size/2, enemy.size, enemy.size);
-                // Полоска здоровья над врагом
-                ctx.fillStyle = 'red';
-                ctx.fillRect(enemy.x - 20, enemy.y - 30, enemy.health * 15, 5);
-            } else {
-                // Кровь на полу
-                ctx.fillStyle = '#b71c1c';
-                ctx.beginPath();
-                ctx.arc(enemy.x, enemy.y, 30, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = 'white';
-                ctx.font = '20px Arial';
-                ctx.fillText('Сосед мертв. В подвале оружие!', canvas.width/2 - 150, canvas.height/2);
+            // Поворот персонажа в сторону прицела (как в ХЛМ)
+            if (aimTouch) {
+                let dx = aimTouch.x - player.x;
+                let dy = aimTouch.y - player.y;
+                player.angle = Math.atan2(dy, dx);
             }
 
-            // Прицел
+            // Рисуем персонажа (с учетом поворота)
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.rotate(player.angle);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(-player.size/2, -player.size/2, player.size, player.size);
+            // Картонная маска спереди
+            ctx.fillStyle = '#a67c52';
+            ctx.fillRect(0, -player.size/4, player.size/2, player.size/2);
+            ctx.restore();
+
+            // Стрельба с задержкой
+            shootTimer++;
+            if (aimTouch && shootTimer > 10) {
+                shoot();
+                shootTimer = 0;
+            }
+
+            // Рисуем пули
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                let b = bullets[i];
+                b.x += b.vx;
+                b.y += b.vy;
+                ctx.fillStyle = 'yellow';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Удаляем пули за экраном
+                if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            // Красная линия прицела
             if (aimTouch) {
                 ctx.beginPath();
                 ctx.moveTo(player.x, player.y);
