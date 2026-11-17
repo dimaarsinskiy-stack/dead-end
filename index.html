@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; touch-action: none; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let player = { x: canvas.width / 2, y: canvas.height / 2, size: 30, speed: 5 };
+        let moveTouch = null;
+        let aimTouch = null;
+
+        canvas.addEventListener('touchstart', (e) => {
+            for (let touch of e.changedTouches) {
+                if (touch.clientX < canvas.width / 2) {
+                    moveTouch = { id: touch.identifier, lastX: touch.clientX, lastY: touch.clientY };
+                } else {
+                    aimTouch = { id: touch.identifier, x: touch.clientX, y: touch.clientY };
+                }
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            for (let touch of e.changedTouches) {
+                if (moveTouch && touch.identifier === moveTouch.id) {
+                    let dx = touch.clientX - moveTouch.lastX;
+                    let dy = touch.clientY - moveTouch.lastY;
+                    player.x += dx * 0.2;
+                    player.y += dy * 0.2;
+                    moveTouch.lastX = touch.clientX;
+                    moveTouch.lastY = touch.clientY;
+                }
+                if (aimTouch && touch.identifier === aimTouch.id) {
+                    aimTouch.x = touch.clientX;
+                    aimTouch.y = touch.clientY;
+                }
+            }
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            for (let touch of e.changedTouches) {
+                if (moveTouch && touch.identifier === moveTouch.id) moveTouch = null;
+                if (aimTouch && touch.identifier === aimTouch.id) aimTouch = null;
+            }
+        });
+
+        function gameLoop() {
+            ctx.fillStyle = '#222';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(player.x - player.size/2, player.y - player.size/2, player.size, player.size);
+            if (aimTouch) {
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y);
+                ctx.lineTo(aimTouch.x, aimTouch.y);
+                ctx.strokeStyle = 'red';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+            requestAnimationFrame(gameLoop);
+        }
+        gameLoop();
+    </script>
+</body>
+</html>
