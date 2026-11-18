@@ -3,19 +3,6 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        /* Принудительный поворот экрана, если телефон в вертикальном положении */
-        @media screen and (orientation: portrait) {
-            body {
-                transform: rotate(90deg);
-                transform-origin: bottom left;
-                position: absolute;
-                top: -100vw;
-                left: 0;
-                width: 100vh;
-                height: 100vw;
-                overflow: hidden;
-            }
-        }
         body { margin: 0; overflow: hidden; background: #111; touch-action: none; }
         canvas { display: block; width: 100%; height: 100%; }
     </style>
@@ -179,16 +166,6 @@
             requestAnimationFrame(gameLoop);
         }
         gameLoop();
-
-        // Запрос на полный экран и поворот
-        setTimeout(() => {
-            if (document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen().catch(e => console.log(e));
-            }
-            if (screen.orientation && screen.orientation.lock) {
-                screen.orientation.lock('landscape').catch(e => console.log('Поворот не удался:', e));
-            }
-        }, 1000);
     </script>
 </body>
 </html>
