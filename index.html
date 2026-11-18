@@ -1,267 +1,229 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <style>
-        /* Жёсткая ориентация для WebView */
-        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; touch-action: none; }
-        canvas { display: block; width: 100vw; height: 100vh; background: #111; }
-        @media screen and (orientation: portrait) {
-            canvas {
-                width: 100vh;
-                height: 100vw;
-                transform: rotate(90deg);
-                transform-origin: bottom left;
-                position: absolute;
-                top: -100vw;
-                left: 0;
-            }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Hotline Mobile Port</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; touch-action: none; }
+    body { background: #111; overflow: hidden; font-family: monospace; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+  </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
-    <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        
-        // --- ГЛОБАЛЬНЫЕ РАЗМЕРЫ ---
-        let W = window.innerWidth;
-        let H = window.innerHeight;
-        if (H > W) { let temp = W; W = H; H = temp; }
-        canvas.width = W;
-        canvas.height = H;
+<canvas id="gameCanvas"></canvas>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize);
+resize();
 
-        // --- ИГРОК ---
-        let player = { x: 100, y: 100, size: 30, angle: 0, speed: 5, health: 3, hasWeapon: false };
-        
-        // --- ОРУЖИЕ И ВРАГИ ---
-        let bullets = [];
-        let enemies = [];
-        let items = [];
-        let bloodParticles = [];
-        let storyText = "Уровень 1: Общага. Сосед стучит по батареям.";
-        let storyTimer = 300;
+const player = { x: 400, y: 300, radius: 16, speed: 260, angle: 0, weapon: 'bat', ammo: 0, attackCooldown: 0, swingTimer: 0 };
+let lockedTarget = null;
+const bullets = [];
+const droppedWeapons = [{ x: 520, y: 260, type: 'gun', ammo: 8, vx: 0, vy: 0 }];
+const walls = [
+  { x: 100, y: 100, w: 800, h: 20 }, { x: 100, y: 600, w: 800, h: 20 },
+  { x: 100, y: 100, w: 20, h: 520 }, { x: 880, y: 100, w: 20, h: 520 },
+  { x: 350, y: 120, w: 20, h: 180 }, { x: 550, y: 380, w: 20, h: 220 }
+];
+const enemies = [
+  { x: 650, y: 220, radius: 16, alive: true },
+  { x: 750, y: 480, radius: 16, alive: true },
+  { x: 240, y: 450, radius: 16, alive: true }
+];
 
-        // --- УПРАВЛЕНИЕ ---
-        let moveStick = { active: false, id: null, sx: 0, sy: 0, cx: 0, cy: 0, dx: 0, dy: 0 };
-        let aimStick = { active: false, id: null, cx: W - 140, cy: H - 140, dx: 0, dy: 0, radius: 70 };
-        
-        // Кнопки
-        let btnFire = { x: W - 80, y: H - 80, radius: 50, pressed: false };
-        let btnThrow = { x: W - 170, y: H - 170, radius: 35, pressed: false };
-        let btnExec = { x: W - 280, y: H - 80, radius: 40, pressed: false };
-        let btnAuto = { x: W - 280, y: H - 180, radius: 35, pressed: false, active: false };
-        let btnLook = { x: W - 80, y: H - 250, radius: 35, pressed: false };
-        let btnRestart = { x: 40, y: 40, radius: 30, pressed: false };
-        let shootCooldown = 0;
+const leftStick = { active: false, id: null, startX: 0, startY: 0, currX: 0, currY: 0, dx: 0, dy: 0, maxR: 55 };
+const rightStick = { active: false, id: null, startX: 0, startY: 0, currX: 0, currY: 0, dx: 0, dy: 0, mag: 0, maxR: 55 };
 
-        // --- КАМЕРА ---
-        let camera = { x: 0, y: 0 };
-        let screenShake = 0;
+function getButtons() {
+  return {
+    action: { x: canvas.width - 95, y: canvas.height - 185, r: 34, label: 'THROW/GET' },
+    lock: { x: canvas.width - 185, y: canvas.height - 95, r: 30, label: 'LOCK' }
+  };
+}
 
-        // --- ИНИЦИАЛИЗАЦИЯ ---
-        function initLevel() {
-            bullets = []; items = []; bloodParticles = []; enemies = [];
-            player.x = 100; player.y = H/2; player.health = 3; player.hasWeapon = false;
-            btnAuto.active = false;
-            
-            // Стены (простая комната)
-            // Враг (Сосед)
-            enemies.push({ x: W - 150, y: H/2, state: 'alive', health: 1, angle: Math.PI });
-            storyTimer = 300;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const btns = getButtons();
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i], tx = t.clientX, ty = t.clientY;
+    if (Math.hypot(tx - btns.action.x, ty - btns.action.y) <= btns.action.r + 12) { triggerAction(); continue; }
+    if (Math.hypot(tx - btns.lock.x, ty - btns.lock.y) <= btns.lock.r + 12) { toggleLockOn(); continue; }
+    if (tx < canvas.width * 0.45 && !leftStick.active) {
+      Object.assign(leftStick, { active: true, id: t.identifier, startX: tx, startY: ty, currX: tx, currY: ty });
+    } else if (tx >= canvas.width * 0.45 && !rightStick.active) {
+      Object.assign(rightStick, { active: true, id: t.identifier, startX: tx, startY: ty, currX: tx, currY: ty });
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    if (leftStick.active && t.identifier === leftStick.id) {
+      const vx = t.clientX - leftStick.startX, vy = t.clientY - leftStick.startY;
+      const dist = Math.hypot(vx, vy), clamped = Math.min(dist, leftStick.maxR), ang = Math.atan2(vy, vx);
+      leftStick.currX = leftStick.startX + Math.cos(ang) * clamped;
+      leftStick.currY = leftStick.startY + Math.sin(ang) * clamped;
+      leftStick.dx = dist > 8 ? Math.cos(ang) * (clamped / leftStick.maxR) : 0;
+      leftStick.dy = dist > 8 ? Math.sin(ang) * (clamped / leftStick.maxR) : 0;
+    }
+    if (rightStick.active && t.identifier === rightStick.id) {
+      const vx = t.clientX - rightStick.startX, vy = t.clientY - rightStick.startY;
+      const dist = Math.hypot(vx, vy), clamped = Math.min(dist, rightStick.maxR), ang = Math.atan2(vy, vx);
+      rightStick.currX = rightStick.startX + Math.cos(ang) * clamped;
+      rightStick.currY = rightStick.startY + Math.sin(ang) * clamped;
+      rightStick.dx = Math.cos(ang); rightStick.dy = Math.sin(ang);
+      rightStick.mag = clamped / rightStick.maxR;
+      if (dist > 10) { lockedTarget = null; player.angle = ang; }
+    }
+  }
+}, { passive: false });
+
+function endTouch(e) {
+  e.preventDefault();
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    if (leftStick.active && t.identifier === leftStick.id) Object.assign(leftStick, { active: false, id: null, dx: 0, dy: 0 });
+    if (rightStick.active && t.identifier === rightStick.id) Object.assign(rightStick, { active: false, id: null, mag: 0 });
+  }
+}
+canvas.addEventListener('touchend', endTouch, { passive: false });
+canvas.addEventListener('touchcancel', endTouch, { passive: false });
+
+function toggleLockOn() {
+  const alive = enemies.filter(e => e.alive);
+  if (!alive.length) { lockedTarget = null; return; }
+  alive.sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y));
+  lockedTarget = lockedTarget === alive[0] ? null : alive[0];
+}
+
+function triggerAction() {
+  if (player.weapon !== 'fists') {
+    droppedWeapons.push({
+      x: player.x + Math.cos(player.angle) * 24, y: player.y + Math.sin(player.angle) * 24,
+      type: player.weapon, ammo: player.ammo, vx: Math.cos(player.angle) * 650, vy: Math.sin(player.angle) * 650
+    });
+    player.weapon = 'fists'; player.ammo = 0;
+    return;
+  }
+  for (let i = 0; i < droppedWeapons.length; i++) {
+    const w = droppedWeapons[i];
+    if (Math.hypot(w.x - player.x, w.y - player.y) < 48) {
+      player.weapon = w.type; player.ammo = w.ammo; droppedWeapons.splice(i, 1); return;
+    }
+  }
+}
+
+function performAttack() {
+  if (player.attackCooldown > 0) return;
+  if (player.weapon === 'gun') {
+    if (player.ammo > 0) {
+      player.ammo--; player.attackCooldown = 0.18;
+      bullets.push({ x: player.x + Math.cos(player.angle) * 22, y: player.y + Math.sin(player.angle) * 22, vx: Math.cos(player.angle) * 950, vy: Math.sin(player.angle) * 950, life: 1.2 });
+    } else player.attackCooldown = 0.25;
+  } else {
+    player.attackCooldown = 0.28; player.swingTimer = 0.15;
+    const reach = player.weapon === 'bat' ? 56 : 38;
+    enemies.forEach(en => {
+      if (!en.alive) return;
+      const dist = Math.hypot(en.x - player.x, en.y - player.y);
+      const diff = Math.abs(Math.atan2(Math.sin(Math.atan2(en.y - player.y, en.x - player.x) - player.angle), Math.cos(Math.atan2(en.y - player.y, en.x - player.x) - player.angle)));
+      if (dist <= reach + en.radius && diff < 0.85) { en.alive = false; if (lockedTarget === en) lockedTarget = null; }
+    });
+  }
+}
+
+function circleRectCollide(cx, cy, r, rect) {
+  const dx = cx - Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+  const dy = cy - Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+  return (dx * dx + dy * dy) < (r * r);
+}
+
+let lastTime = performance.now(), bgHue = 310;
+function update(dt) {
+  bgHue = (bgHue + dt * 12) % 360;
+  if (player.attackCooldown > 0) player.attackCooldown -= dt;
+  if (player.swingTimer > 0) player.swingTimer -= dt;
+  const nx = player.x + leftStick.dx * player.speed * dt, ny = player.y + leftStick.dy * player.speed * dt;
+  if (!walls.some(w => circleRectCollide(nx, player.y, player.radius, w))) player.x = nx;
+  if (!walls.some(w => circleRectCollide(player.x, ny, player.radius, w))) player.y = ny;
+  if (lockedTarget && lockedTarget.alive) player.angle = Math.atan2(lockedTarget.y - player.y, lockedTarget.x - player.x);
+  if (rightStick.active && rightStick.mag > 0.75) performAttack();
+
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i]; b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+    if (walls.some(w => circleRectCollide(b.x, b.y, 4, w)) || b.life <= 0) { bullets.splice(i, 1); continue; }
+    for (const en of enemies) {
+      if (en.alive && Math.hypot(b.x - en.x, b.y - en.y) < en.radius + 4) {
+        en.alive = false; if (lockedTarget === en) lockedTarget = null; bullets.splice(i, 1); break;
+      }
+    }
+  }
+
+  droppedWeapons.forEach(w => {
+    if (Math.hypot(w.vx, w.vy) > 10) {
+      const wx = w.x + w.vx * dt, wy = w.y + w.vy * dt;
+      if (walls.some(wall => circleRectCollide(wx, wy, 10, wall))) { w.vx *= -0.3; w.vy *= -0.3; }
+      else { w.x = wx; w.y = wy; }
+      w.vx *= 0.88; w.vy *= 0.88;
+      enemies.forEach(en => {
+        if (en.alive && Math.hypot(w.x - en.x, w.y - en.y) < en.radius + 12) {
+          en.alive = false; w.vx = 0; w.vy = 0; if (lockedTarget === en) lockedTarget = null;
         }
+      });
+    }
+  });
+}
 
-        // --- ОБРАБОТКА КАСАНИЙ (МУЛЬТИТАЧ) ---
-        canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            for (let touch of e.changedTouches) {
-                let x = touch.clientX, y = touch.clientY;
+function draw() {
+  ctx.fillStyle = `hsl(${bgHue}, 45%, 12%)`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const camX = canvas.width / 2 - player.x - Math.cos(player.angle) * 45;
+  const camY = canvas.height / 2 - player.y - Math.sin(player.angle) * 45;
 
-                if (Math.hypot(x - btnRestart.x, y - btnRestart.y) < btnRestart.radius) { initLevel(); continue; }
-                if (Math.hypot(x - btnFire.x, y - btnFire.y) < btnFire.radius) { btnFire.pressed = true; continue; }
-                if (Math.hypot(x - btnThrow.x, y - btnThrow.y) < btnThrow.radius) { btnThrow.pressed = true; continue; }
-                if (Math.hypot(x - btnExec.x, y - btnExec.y) < btnExec.radius) { btnExec.pressed = true; continue; }
-                if (Math.hypot(x - btnLook.x, y - btnLook.y) < btnLook.radius) { btnLook.pressed = true; continue; }
-                if (Math.hypot(x - btnAuto.x, y - btnAuto.y) < btnAuto.radius) { btnAuto.pressed = true; btnAuto.active = !btnAuto.active; continue; }
+  ctx.save(); ctx.translate(camX, camY);
+  ctx.fillStyle = '#1e1b2e'; ctx.fillRect(100, 100, 800, 520);
+  droppedWeapons.forEach(w => { ctx.fillStyle = w.type === 'gun' ? '#00f0ff' : '#ffcc00'; ctx.beginPath(); ctx.arc(w.x, w.y, 10, 0, Math.PI * 2); ctx.fill(); });
+  enemies.forEach(en => {
+    ctx.fillStyle = en.alive ? '#ff2a6d' : '#590d22'; ctx.beginPath(); ctx.arc(en.x, en.y, en.radius, 0, Math.PI * 2); ctx.fill();
+    if (lockedTarget === en && en.alive) { ctx.strokeStyle = '#05d9e8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(en.x, en.y, en.radius + 8, 0, Math.PI * 2); ctx.stroke(); }
+  });
+  ctx.fillStyle = '#fffb96'; bullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI * 2); ctx.fill(); });
 
-                if (x < W / 2 && !moveStick.active) {
-                    moveStick.active = true; moveStick.id = touch.identifier;
-                    moveStick.sx = x; moveStick.sy = y; moveStick.cx = x; moveStick.cy = y;
-                } else if (x >= W / 2 && !aimStick.active) {
-                    aimStick.active = true; aimStick.id = touch.identifier;
-                }
-            }
-        });
+  ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(player.angle);
+  if (player.swingTimer > 0) { ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(0, 0, 42, -0.7, 0.7); ctx.stroke(); }
+  ctx.fillStyle = '#05d9e8'; ctx.beginPath(); ctx.arc(0, 0, player.radius, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  if (player.weapon === 'bat') ctx.fillRect(10, -3, 28, 6);
+  else if (player.weapon === 'gun') ctx.fillRect(12, -4, 18, 8);
+  ctx.restore();
 
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            for (let touch of e.changedTouches) {
-                if (touch.identifier === moveStick.id) {
-                    moveStick.cx = touch.clientX; moveStick.cy = touch.clientY;
-                    let dx = moveStick.cx - moveStick.sx, dy = moveStick.cy - moveStick.sy;
-                    let dist = Math.min(Math.hypot(dx, dy), 60);
-                    moveStick.dx = Math.cos(Math.atan2(dy, dx)) * (dist / 60);
-                    moveStick.dy = Math.sin(Math.atan2(dy, dx)) * (dist / 60);
-                }
-                if (touch.identifier === aimStick.id) {
-                    let dx = touch.clientX - aimStick.cx, dy = touch.clientY - aimStick.cy;
-                    let dist = Math.min(Math.hypot(dx, dy), aimStick.radius);
-                    aimStick.dx = Math.cos(Math.atan2(dy, dx)) * (dist / aimStick.radius);
-                    aimStick.dy = Math.sin(Math.atan2(dy, dx)) * (dist / aimStick.radius);
-                }
-            }
-        });
+  ctx.fillStyle = '#ff007f'; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+  ctx.restore();
+drawStick(leftStick, 'rgba(5, 217, 232, 0.35)');
+drawStick(rightStick, rightStick.mag > 0.75 ? 'rgba(255, 42, 109, 0.6)' : 'rgba(255, 42, 109, 0.3)');
+const btns = getButtons();
+drawButton(btns.action, '#ffcc00');
+drawButton(btns.lock, lockedTarget ? '#05d9e8' : '#888888');
+}
+function drawStick(s, col) {
+if (!s.active) return;
+ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(s.startX, s.startY, s.maxR, 0, Math.PI * 2); ctx.stroke();
+ctx.fillStyle = col; ctx.beginPath(); ctx.arc(s.currX, s.currY, 22, 0, Math.PI * 2); ctx.fill();
+}
+function drawButton(b, col) {
+ctx.strokeStyle = col; ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 3;
+ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+ctx.fillStyle = '#fff'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+ctx.fillText(b.label, b.x, b.y);
+}
+function loop(now) {
+const dt = Math.min((now - lastTime) / 1000, 0.05); lastTime = now;
+update(dt); draw(); requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
 
-        canvas.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            for (let touch of e.changedTouches) {
-                if (touch.identifier === moveStick.id) { moveStick.active = false; moveStick.id = null; moveStick.dx = 0; moveStick.dy = 0; }
-                if (touch.identifier === aimStick.id) { aimStick.active = false; aimStick.id = null; aimStick.dx = 0; aimStick.dy = 0; }
-                btnFire.pressed = false; btnThrow.pressed = false; btnExec.pressed = false; btnLook.pressed = false; btnAuto.pressed = false;
-            }
-        });
-
-        function createBlood(x, y) {
-            for (let i = 0; i < 15; i++) bloodParticles.push({ x, y, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, life: 60 });
-            screenShake = 10;
-        }
-
-        function update() {
-            if (storyTimer > 0) storyTimer--;
-            if (screenShake > 0) screenShake--;
-
-            // Движение
-            player.x += moveStick.dx * player.speed;
-            player.y += moveStick.dy * player.speed;
-            player.x = Math.max(20, Math.min(W - 20, player.x));
-            player.y = Math.max(20, Math.min(H - 20, player.y));
-
-            // Прицел
-            if (aimStick.active) player.angle = Math.atan2(aimStick.dy, aimStick.dx);
-
-            // Авто-прицел
-            if (btnAuto.active && enemies.length > 0) {
-                let target = enemies.find(e => e.state === 'alive');
-                if (target) {
-                    player.angle = Math.atan2(target.y - player.y, target.x - player.x);
-                    aimStick.dx = Math.cos(player.angle); aimStick.dy = Math.sin(player.angle);
-                }
-            }
-
-            // Атака
-            if (btnFire.pressed) {
-                if (player.hasWeapon && shootCooldown <= 0) {
-                    bullets.push({ x: player.x, y: player.y, vx: Math.cos(player.angle)*20, vy: Math.sin(player.angle)*20 });
-                    shootCooldown = 10;
-                } else if (!player.hasWeapon) {
-                    enemies.forEach(e => {
-                        if (e.state === 'alive' && Math.hypot(e.x - player.x, e.y - player.y) < 60) e.state = 'downed';
-                    });
-                }
-            }
-            if (shootCooldown > 0) shootCooldown--;
-
-            // Добивание
-            if (btnExec.pressed) {
-                let downed = enemies.find(e => e.state === 'downed' && Math.hypot(e.x - player.x, e.y - player.y) < 60);
-                if (downed) { downed.state = 'dead'; createBlood(downed.x, downed.y); }
-            }
-
-            // Бросок/Подбор
-            if (btnThrow.pressed) {
-                if (player.hasWeapon) { player.hasWeapon = false; items.push({ x: player.x, y: player.y }); }
-                else {
-                    let item = items.find(i => Math.hypot(i.x - player.x, i.y - player.y) < 50);
-                    if (item) { player.hasWeapon = true; items.splice(items.indexOf(item), 1); }
-                }
-            }
-
-            // Пули
-            bullets.forEach((b, i) => {
-                b.x += b.vx; b.y += b.vy;
-                enemies.forEach(e => {
-                    if (e.state === 'alive' && Math.hypot(b.x - e.x, b.y - e.y) < 20) { e.state = 'dead'; createBlood(e.x, e.y); bullets.splice(i, 1); }
-                });
-                if (b.x < 0 || b.x > W || b.y < 0 || b.y > H) bullets.splice(i, 1);
-            });
-
-            // Кровь
-            bloodParticles.forEach((p, i) => { p.x += p.vx; p.y += p.vy; p.life--; if (p.life <= 0) bloodParticles.splice(i, 1); });
-
-            // Камера
-            camera.x = player.x - W/2;
-            camera.y = player.y - H/2;
-        }
-
-        function draw() {
-            ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H);
-            
-            let shakeX = screenShake > 0 ? (Math.random()-0.5)*10 : 0;
-            let shakeY = screenShake > 0 ? (Math.random()-0.5)*10 : 0;
-
-            ctx.save();
-            ctx.translate(-camera.x + shakeX, -camera.y + shakeY);
-
-            // Кровь
-            bloodParticles.forEach(p => { ctx.fillStyle = '#b71c1c'; ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill(); });
-
-            // Враги
-            enemies.forEach(e => {
-                if (e.state === 'alive') { ctx.fillStyle = '#d32f2f'; ctx.fillRect(e.x-15, e.y-15, 30, 30); }
-                else if (e.state === 'downed') { ctx.fillStyle = '#b71c1c'; ctx.fillRect(e.x-30, e.y-7, 60, 15); }
-            });
-
-            // Игрок
-            ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(player.angle);
-            ctx.fillStyle = '#fff'; ctx.fillRect(-15, -15, 30, 30);
-            ctx.fillStyle = '#a67c52'; ctx.fillRect(0, -7, 15, 15);
-            if (player.hasWeapon) { ctx.fillStyle = 'gray'; ctx.fillRect(15, -5, 20, 10); }
-            ctx.restore();
-
-            // Пули
-            bullets.forEach(b => { ctx.fillStyle = 'yellow'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI*2); ctx.fill(); });
-
-            ctx.restore();
-
-            // --- ИНТЕРФЕЙС ---
-            if (moveStick.active) {
-                ctx.beginPath(); ctx.arc(moveStick.sx, moveStick.sy, 60, 0, Math.PI*2);
-                ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 4; ctx.stroke();
-                ctx.beginPath(); ctx.arc(moveStick.sx + moveStick.dx*60, moveStick.sy + moveStick.dy*60, 25, 0, Math.PI*2);
-                ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fill();
-            }
-
-            ctx.beginPath(); ctx.arc(aimStick.cx, aimStick.cy, aimStick.radius, 0, Math.PI*2);
-            ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 4; ctx.stroke();
-            ctx.beginPath(); ctx.arc(aimStick.cx + aimStick.dx*aimStick.radius, aimStick.cy + aimStick.dy*aimStick.radius, 25, 0, Math.PI*2);
-            ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fill();
-
-            const drawBtn = (b, label, color, active) => {
-                ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2);
-                ctx.fillStyle = active ? 'rgba(0, 255, 0, 0.5)' : (b.pressed ? 'rgba(255,0,0,0.6)' : color);
-                ctx.fill(); ctx.strokeStyle = 'white'; ctx.lineWidth = 3; ctx.stroke();
-                ctx.fillStyle = 'white'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
-                ctx.fillText(label, b.x, b.y + 4);
-            };
-            drawBtn(btnFire, 'FIRE', 'rgba(255,0,0,0.4)', false);
-            drawBtn(btnThrow, 'THROW', 'rgba(0,0,255,0.4)', false);
-            drawBtn(btnExec, 'EXEC', 'rgba(255,165,0,0.4)', false);
-            drawBtn(btnAuto, 'AUTO', 'rgba(100,100,100,0.4)', btnAuto.active);
-            drawBtn(btnLook, 'LOOK', 'rgba(0,255,255,0.4)', false);
-            drawBtn(btnRestart, 'R', 'rgba(255,255,255,0.2)', false);
-
-            if (storyTimer > 0) {
-                ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, H/2 - 20, W, 40);
-                ctx.fillStyle = 'white'; ctx.font = '20px Arial'; ctx.textAlign = 'center';
-                ctx.fillText(storyText, W/2, H/2 + 5);
-            }
-        }
-
-        function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); }
-        initLevel();
-        gameLoop();
-    </script>
-</body>
-</html>
