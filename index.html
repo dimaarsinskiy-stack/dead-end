@@ -1,10 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
+        /* Принудительный поворот экрана, если телефон в вертикальном положении */
+        @media screen and (orientation: portrait) {
+            body {
+                transform: rotate(90deg);
+                transform-origin: bottom left;
+                position: absolute;
+                top: -100vw;
+                left: 0;
+                width: 100vh;
+                height: 100vw;
+                overflow: hidden;
+            }
+        }
         body { margin: 0; overflow: hidden; background: #111; touch-action: none; }
-        canvas { display: block; }
+        canvas { display: block; width: 100%; height: 100%; }
     </style>
 </head>
 <body>
@@ -12,6 +25,8 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        
+        // Подгоняем размер холста под экран
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
@@ -24,8 +39,8 @@
         // Правый джойстик (прицел)
         let aimJoy = { x: canvas.width - 120, y: canvas.height - 120, active: false, id: null, angle: 0, dist: 0 };
 
-        // Кнопки как в порте: FAR, +, 3
-        let btnFar = { x: canvas.width - 220, y: canvas.height - 70, radius: 30, pressed: false };
+        // Кнопки: FAR, +, 3
+        let btnFar = { x: canvas.width - 250, y: canvas.height - 70, radius: 30, pressed: false };
         let btnPlus = { x: canvas.width - 70, y: canvas.height - 70, radius: 40, pressed: false };
         let btnThree = { x: canvas.width - 140, y: canvas.height - 140, radius: 30, pressed: false };
 
@@ -38,13 +53,10 @@
                         moveJoy.curX = touch.clientX; moveJoy.curY = touch.clientY;
                     }
                 } else {
-                    // FAR
                     if (Math.hypot(touch.clientX - btnFar.x, touch.clientY - btnFar.y) < btnFar.radius) {
                         btnFar.pressed = true;
-                        // FAR переключает режим (пока просто визуально)
                         continue;
                     }
-                    // +
                     if (Math.hypot(touch.clientX - btnPlus.x, touch.clientY - btnPlus.y) < btnPlus.radius) {
                         btnPlus.pressed = true;
                         if (player.hasWeapon) {
@@ -58,13 +70,11 @@
                         }
                         continue;
                     }
-                    // 3
                     if (Math.hypot(touch.clientX - btnThree.x, touch.clientY - btnThree.y) < btnThree.radius) {
                         btnThree.pressed = true;
-                        player.hasWeapon = false; // Выбросить
+                        player.hasWeapon = false;
                         continue;
                     }
-                    // Прицел
                     if (!aimJoy.active) {
                         aimJoy.id = touch.identifier; aimJoy.active = true;
                     }
@@ -118,7 +128,6 @@
             ctx.strokeStyle = '#555'; ctx.lineWidth = 10; ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
             if (shootCooldown > 0) shootCooldown--;
 
-            // Враг
             if (enemy.state === 'alive') {
                 ctx.fillStyle = '#d32f2f'; ctx.fillRect(enemy.x - 15, enemy.y - 15, 30, 30);
             } else if (enemy.state === 'downed') {
@@ -127,14 +136,12 @@
                 ctx.fillStyle = '#4a0000'; ctx.beginPath(); ctx.arc(enemy.x, enemy.y, 40, 0, Math.PI * 2); ctx.fill();
             }
 
-            // Игрок
             ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(player.angle);
             ctx.fillStyle = '#fff'; ctx.fillRect(-15, -15, 30, 30);
             ctx.fillStyle = '#a67c52'; ctx.fillRect(0, -7, 15, 15);
             if (player.hasWeapon) { ctx.fillStyle = 'gray'; ctx.fillRect(15, -5, 20, 10); }
             ctx.restore();
 
-            // Пули
             for (let i = bullets.length - 1; i >= 0; i--) {
                 let b = bullets[i]; b.x += b.vx; b.y += b.vy;
                 ctx.fillStyle = 'yellow'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI * 2); ctx.fill();
@@ -144,7 +151,6 @@
                 if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(i, 1);
             }
 
-            // Левый джойстик
             if (moveJoy.active) {
                 ctx.beginPath(); ctx.arc(moveJoy.startX, moveJoy.startY, 60, 0, Math.PI * 2);
                 ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 4; ctx.stroke();
@@ -153,14 +159,12 @@
                 ctx.beginPath(); ctx.arc(sx, sy, 25, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fill();
             }
 
-            // Правый джойстик
             ctx.beginPath(); ctx.arc(aimJoy.x, aimJoy.y, 60, 0, Math.PI * 2);
             ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 4; ctx.stroke();
             let ax = aimJoy.x + Math.cos(aimJoy.angle) * aimJoy.dist;
             let ay = aimJoy.y + Math.sin(aimJoy.angle) * aimJoy.dist;
             ctx.beginPath(); ctx.arc(ax, ay, 25, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fill();
 
-            // Кнопки
             const drawBtn = (b, label, color) => {
                 ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
                 ctx.fillStyle = b.pressed ? 'rgba(255,0,0,0.6)' : color;
@@ -175,6 +179,16 @@
             requestAnimationFrame(gameLoop);
         }
         gameLoop();
+
+        // Запрос на полный экран и поворот
+        setTimeout(() => {
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(e => console.log(e));
+            }
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').catch(e => console.log('Поворот не удался:', e));
+            }
+        }, 1000);
     </script>
 </body>
 </html>
