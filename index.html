@@ -15,36 +15,23 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // Игрок
         let player = { x: canvas.width / 2, y: canvas.height / 2, size: 30, angle: 0 };
         let bullets = [];
-        
-        // Враг
         let enemy = { x: canvas.width / 2, y: 150, size: 30, health: 5, alive: true };
 
-        // Настройки плавающих джойстиков
-        let joyRadius = 50;
-        let moveJoy = { startX: 0, startY: 0, curX: 0, curY: 0, active: false, id: null, angle: 0 };
-        let aimJoy = { startX: 0, startY: 0, curX: 0, curY: 0, active: false, id: null, angle: 0 };
+        // Плавающий левый джойстик (появляется при нажатии)
+        let moveJoy = { active: false, id: null, startX: 0, startY: 0, curX: 0, curY: 0, angle: 0, dist: 0 };
+        
+        // Правый джойстик (фиксированный, для прицела)
+        let aimJoy = { x: canvas.width - 120, y: canvas.height - 120, active: false, id: null, angle: 0, dist: 0 };
+        
+        // Кнопки как в порте: 1 (бить) и 3 (подобрать/выбросить)
+        let btn1 = { x: canvas.width - 70, y: canvas.height - 200, radius: 35, pressed: false };
+        let btn3 = { x: canvas.width - 150, y: canvas.height - 170, radius: 35, pressed: false };
 
-        // Кнопка удара (справа внизу)
-        let actionBtn = { x: canvas.width - 70, y: canvas.height - 70, radius: 40, pressed: false };
-
-        // Обработка касаний
         canvas.addEventListener('touchstart', (e) => {
             for (let touch of e.changedTouches) {
-                // Проверка нажатия на кнопку действия
-                if (Math.hypot(touch.clientX - actionBtn.x, touch.clientY - actionBtn.y) < actionBtn.radius) {
-                    actionBtn.pressed = true;
-                    // Удар вблизи
-                    if (enemy.alive && Math.hypot(player.x - enemy.x, player.y - enemy.y) < 60) {
-                        enemy.health -= 2; // Ближний бой больнее
-                        if (enemy.health <= 0) enemy.alive = false;
-                    }
-                    continue;
-                }
-
-                // Левая половина — движение
+                // Левая половина — плавающий джойстик
                 if (touch.clientX < canvas.width / 2) {
                     if (!moveJoy.active) {
                         moveJoy.id = touch.identifier;
@@ -55,15 +42,26 @@
                         moveJoy.curY = touch.clientY;
                     }
                 } 
-                // Правая половина — прицел и стрельба
+                // Правая половина — проверка кнопок или прицел
                 else {
+                    // Кнопка 1 (Бить)
+                    if (Math.hypot(touch.clientX - btn1.x, touch.clientY - btn1.y) < btn1.radius) {
+                        btn1.pressed = true;
+                        if (enemy.alive && Math.hypot(player.x - enemy.x, player.y - enemy.y) < 70) {
+                            enemy.health -= 2;
+                            if (enemy.health <= 0) enemy.alive = false;
+                        }
+                        continue;
+                    }
+                    // Кнопка 3 (Подобрать/Выбросить)
+                    if (Math.hypot(touch.clientX - btn3.x, touch.clientY - btn3.y) < btn3.radius) {
+                        btn3.pressed = true;
+                        continue;
+                    }
+                    // Иначе правый джойстик (прицел)
                     if (!aimJoy.active) {
                         aimJoy.id = touch.identifier;
                         aimJoy.active = true;
-                        aimJoy.startX = touch.clientX;
-                        aimJoy.startY = touch.clientY;
-                        aimJoy.curX = touch.clientX;
-                        aimJoy.curY = touch.clientY;
                     }
                 }
             }
@@ -77,24 +75,23 @@
                     let dx = moveJoy.curX - moveJoy.startX;
                     let dy = moveJoy.curY - moveJoy.startY;
                     moveJoy.angle = Math.atan2(dy, dx);
-                    // Движение игрока
-                    if (Math.hypot(dx, dy) > 10) {
+                    moveJoy.dist = Math.min(Math.hypot(dx, dy), 60);
+                    
+                    if (moveJoy.dist > 15) {
                         player.x += Math.cos(moveJoy.angle) * 5;
                         player.y += Math.sin(moveJoy.angle) * 5;
-                        // Ограничение по краям
                         player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
                         player.y = Math.max(20, Math.min(canvas.height - 20, player.y));
                     }
                 }
                 if (touch.identifier === aimJoy.id) {
-                    aimJoy.curX = touch.clientX;
-                    aimJoy.curY = touch.clientY;
-                    let dx = aimJoy.curX - aimJoy.startX;
-                    let dy = aimJoy.curY - aimJoy.startY;
+                    let dx = touch.clientX - aimJoy.x;
+                    let dy = touch.clientY - aimJoy.y;
                     aimJoy.angle = Math.atan2(dy, dx);
-                    // Поворот игрока и стрельба
+                    aimJoy.dist = Math.min(Math.hypot(dx, dy), 60);
+                    
                     player.angle = aimJoy.angle;
-                    if (Math.hypot(dx, dy) > 10) {
+                    if (aimJoy.dist > 15) {
                         shoot();
                     }
                 }
@@ -106,14 +103,15 @@
                 if (touch.identifier === moveJoy.id) {
                     moveJoy.active = false;
                     moveJoy.id = null;
+                    moveJoy.dist = 0;
                 }
                 if (touch.identifier === aimJoy.id) {
                     aimJoy.active = false;
                     aimJoy.id = null;
+                    aimJoy.dist = 0;
                 }
-                if (Math.hypot(touch.clientX - actionBtn.x, touch.clientY - actionBtn.y) < actionBtn.radius) {
-                    actionBtn.pressed = false;
-                }
+                btn1.pressed = false;
+                btn3.pressed = false;
             }
         });
 
@@ -129,31 +127,9 @@
             shootCooldown = 8;
         }
 
-        function drawJoystick(joy) {
-            if (!joy.active) return;
-            // Внешний круг (база)
-            ctx.beginPath();
-            ctx.arc(joy.startX, joy.startY, joyRadius, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-            ctx.lineWidth = 4;
-            ctx.stroke();
-            // Внутренний круг (стик)
-            let dx = joy.curX - joy.startX;
-            let dy = joy.curY - joy.startY;
-            let dist = Math.min(Math.hypot(dx, dy), joyRadius);
-            let stickX = joy.startX + Math.cos(joy.angle) * dist;
-            let stickY = joy.startY + Math.sin(joy.angle) * dist;
-            ctx.beginPath();
-            ctx.arc(stickX, stickY, 20, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255,255,255,0.5)';
-            ctx.fill();
-        }
-
         function gameLoop() {
             ctx.fillStyle = '#222';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Стены
             ctx.strokeStyle = '#555';
             ctx.lineWidth = 10;
             ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
@@ -164,7 +140,6 @@
             if (enemy.alive) {
                 ctx.fillStyle = '#d32f2f';
                 ctx.fillRect(enemy.x - enemy.size/2, enemy.y - enemy.size/2, enemy.size, enemy.size);
-                // Полоска здоровья
                 ctx.fillStyle = 'red';
                 ctx.fillRect(enemy.x - 25, enemy.y - 30, enemy.health * 10, 5);
             } else {
@@ -201,28 +176,64 @@
                     bullets.splice(i, 1); 
                     continue;
                 }
-
                 if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
                     bullets.splice(i, 1);
                 }
             }
 
-            // Отрисовка джойстиков
-            drawJoystick(moveJoy);
-            drawJoystick(aimJoy);
+            // Рисуем левый джойстик (только если активен)
+            if (moveJoy.active) {
+                ctx.beginPath();
+                ctx.arc(moveJoy.startX, moveJoy.startY, 60, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+                
+                let stickX = moveJoy.startX + Math.cos(moveJoy.angle) * moveJoy.dist;
+                let stickY = moveJoy.startY + Math.sin(moveJoy.angle) * moveJoy.dist;
+                ctx.beginPath();
+                ctx.arc(stickX, stickY, 25, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.fill();
+            }
 
-            // Кнопка удара (Кулак)
+            // Рисуем правый джойстик (всегда)
             ctx.beginPath();
-            ctx.arc(actionBtn.x, actionBtn.y, actionBtn.radius, 0, Math.PI * 2);
-            ctx.fillStyle = actionBtn.pressed ? 'rgba(255, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.2)';
+            ctx.arc(aimJoy.x, aimJoy.y, 60, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            let astickX = aimJoy.x + Math.cos(aimJoy.angle) * aimJoy.dist;
+            let astickY = aimJoy.y + Math.sin(aimJoy.angle) * aimJoy.dist;
+            ctx.beginPath();
+            ctx.arc(astickX, astickY, 25, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            ctx.fill();
+
+            // Кнопка 1 (Бить)
+            ctx.beginPath();
+            ctx.arc(btn1.x, btn1.y, btn1.radius, 0, Math.PI * 2);
+            ctx.fillStyle = btn1.pressed ? 'rgba(255,0,0,0.6)' : 'rgba(255,255,255,0.2)';
             ctx.fill();
             ctx.strokeStyle = 'white';
             ctx.lineWidth = 3;
             ctx.stroke();
             ctx.fillStyle = 'white';
-            ctx.font = '16px Arial';
+            ctx.font = 'bold 20px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('БИТЬ', actionBtn.x, actionBtn.y + 5);
+            ctx.fillText('1', btn1.x, btn1.y + 7);
+
+            // Кнопка 3 (Подобрать/Выбросить)
+            ctx.beginPath();
+            ctx.arc(btn3.x, btn3.y, btn3.radius, 0, Math.PI * 2);
+            ctx.fillStyle = btn3.pressed ? 'rgba(0,255,0,0.6)' : 'rgba(255,255,255,0.2)';
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText('3', btn3.x, btn3.y + 7);
 
             requestAnimationFrame(gameLoop);
         }
