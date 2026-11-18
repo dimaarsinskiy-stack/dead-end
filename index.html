@@ -13,15 +13,18 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
-        // Подгоняем размер холста под экран
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
+        // Игрок
         let player = { x: canvas.width / 2, y: canvas.height / 2, size: 30, angle: 0, hasWeapon: false };
         let bullets = [];
+        
+        // Враг (Сосед)
+        // Состояния: 'alive' (стоит), 'downed' (лежит), 'dead' (мертв)
         let enemy = { x: canvas.width / 2, y: 150, size: 30, state: 'alive', health: 1 };
 
-        // Плавающий левый джойстик
+        // Управление (Плавающий джойстик)
         let moveJoy = { active: false, id: null, startX: 0, startY: 0, curX: 0, curY: 0, angle: 0, dist: 0 };
         // Правый джойстик (прицел)
         let aimJoy = { x: canvas.width - 120, y: canvas.height - 120, active: false, id: null, angle: 0, dist: 0 };
@@ -47,19 +50,22 @@
                     if (Math.hypot(touch.clientX - btnPlus.x, touch.clientY - btnPlus.y) < btnPlus.radius) {
                         btnPlus.pressed = true;
                         if (player.hasWeapon) {
-                            shoot();
+                            shoot(); // Стрельба, если есть ствол
                         } else {
-                            if (enemy.state === 'alive' && Math.hypot(player.x - enemy.x, player.y - enemy.y) < 70) {
-                                enemy.state = 'downed';
-                            } else if (enemy.state === 'downed' && Math.hypot(player.x - enemy.x, player.y - enemy.y) < 70) {
-                                enemy.state = 'dead';
+                            // Удар кулаком (если враг близко)
+                            if (Math.hypot(player.x - enemy.x, player.y - enemy.y) < 70) {
+                                if (enemy.state === 'alive') {
+                                    enemy.state = 'downed'; // Первый удар роняет
+                                } else if (enemy.state === 'downed') {
+                                    enemy.state = 'dead'; // Второй удар добивает (кровь)
+                                }
                             }
                         }
                         continue;
                     }
                     if (Math.hypot(touch.clientX - btnThree.x, touch.clientY - btnThree.y) < btnThree.radius) {
                         btnThree.pressed = true;
-                        player.hasWeapon = false;
+                        player.hasWeapon = false; // Выбросить оружие
                         continue;
                     }
                     if (!aimJoy.active) {
@@ -80,6 +86,7 @@
                     if (moveJoy.dist > 15) {
                         player.x += Math.cos(moveJoy.angle) * 5;
                         player.y += Math.sin(moveJoy.angle) * 5;
+                        // Ограничение по краям
                         player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
                         player.y = Math.max(20, Math.min(canvas.height - 20, player.y));
                     }
@@ -112,32 +119,45 @@
 
         function gameLoop() {
             ctx.fillStyle = '#222'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = '#555'; ctx.lineWidth = 10; ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+            // Стены (сделал чуть темнее, чтобы не отвлекали)
+            ctx.strokeStyle = '#444'; ctx.lineWidth = 10; ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+            
             if (shootCooldown > 0) shootCooldown--;
 
+            // Отрисовка врага (Сосед)
             if (enemy.state === 'alive') {
-                ctx.fillStyle = '#d32f2f'; ctx.fillRect(enemy.x - 15, enemy.y - 15, 30, 30);
+                ctx.fillStyle = '#d32f2f'; // Красный квадрат
+                ctx.fillRect(enemy.x - 15, enemy.y - 15, 30, 30);
             } else if (enemy.state === 'downed') {
-                ctx.fillStyle = '#b71c1c'; ctx.fillRect(enemy.x - 30, enemy.y - 7, 60, 15);
+                ctx.fillStyle = '#b71c1c'; // Темно-красный прямоугольник (лежит)
+                ctx.fillRect(enemy.x - 30, enemy.y - 7, 60, 15);
             } else {
-                ctx.fillStyle = '#4a0000'; ctx.beginPath(); ctx.arc(enemy.x, enemy.y, 40, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#4a0000'; // Темная лужа крови
+                ctx.beginPath(); ctx.arc(enemy.x, enemy.y, 40, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = 'white'; ctx.font = '16px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('Сосед мертв', enemy.x, enemy.y - 50);
             }
 
+            // Отрисовка игрока
             ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(player.angle);
             ctx.fillStyle = '#fff'; ctx.fillRect(-15, -15, 30, 30);
-            ctx.fillStyle = '#a67c52'; ctx.fillRect(0, -7, 15, 15);
-            if (player.hasWeapon) { ctx.fillStyle = 'gray'; ctx.fillRect(15, -5, 20, 10); }
+            ctx.fillStyle = '#a67c52'; ctx.fillRect(0, -7, 15, 15); // Картонная маска
+            if (player.hasWeapon) { ctx.fillStyle = 'gray'; ctx.fillRect(15, -5, 20, 10); } // Оружие в руке
             ctx.restore();
 
+            // Пули
             for (let i = bullets.length - 1; i >= 0; i--) {
                 let b = bullets[i]; b.x += b.vx; b.y += b.vy;
                 ctx.fillStyle = 'yellow'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI * 2); ctx.fill();
+                
+                // Проверка попадания
                 if (enemy.state === 'alive' && b.x > enemy.x - 15 && b.x < enemy.x + 15 && b.y > enemy.y - 15 && b.y < enemy.y + 15) {
                     enemy.state = 'dead'; bullets.splice(i, 1); continue;
                 }
                 if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(i, 1);
             }
 
+            // Левый джойстик (только если активен)
             if (moveJoy.active) {
                 ctx.beginPath(); ctx.arc(moveJoy.startX, moveJoy.startY, 60, 0, Math.PI * 2);
                 ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 4; ctx.stroke();
@@ -146,12 +166,14 @@
                 ctx.beginPath(); ctx.arc(sx, sy, 25, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fill();
             }
 
+            // Правый джойстик (всегда)
             ctx.beginPath(); ctx.arc(aimJoy.x, aimJoy.y, 60, 0, Math.PI * 2);
             ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 4; ctx.stroke();
             let ax = aimJoy.x + Math.cos(aimJoy.angle) * aimJoy.dist;
             let ay = aimJoy.y + Math.sin(aimJoy.angle) * aimJoy.dist;
             ctx.beginPath(); ctx.arc(ax, ay, 25, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fill();
 
+            // Отрисовка кнопок
             const drawBtn = (b, label, color) => {
                 ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
                 ctx.fillStyle = b.pressed ? 'rgba(255,0,0,0.6)' : color;
@@ -161,7 +183,7 @@
             };
             drawBtn(btnFar, 'FAR', 'rgba(100,100,255,0.3)');
             drawBtn(btnPlus, '+', 'rgba(255,255,255,0.2)');
-            drawBtn(btnThree, '3', 'rgba(255,255,0,0.3)');
+            drawBtn(btnThree, '3', 'rgba(255,0,0,0.3)');
 
             requestAnimationFrame(gameLoop);
         }
