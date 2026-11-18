@@ -15,96 +15,139 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
+        // Игрок
         let player = { x: canvas.width / 2, y: canvas.height / 2, size: 30, angle: 0 };
         let bullets = [];
         
-        let moveTouch = null;
-        let aimTouch = null;
-        let shootTimer = 0;
+        // Враг
+        let enemy = { x: canvas.width / 2, y: 150, size: 30, health: 5, alive: true };
 
+        // Настройки джойстиков
+        let joyRadius = 50;
+        let moveJoy = { x: 100, y: canvas.height - 100, active: false, id: null, angle: 0 };
+        let aimJoy = { x: canvas.width - 100, y: canvas.height - 100, active: false, id: null, angle: 0 };
+
+        // Обработка касаний
         canvas.addEventListener('touchstart', (e) => {
             for (let touch of e.changedTouches) {
-                if (touch.clientX < canvas.width / 2) {
-                    moveTouch = { id: touch.identifier, lastX: touch.clientX, lastY: touch.clientY };
-                } else {
-                    aimTouch = { id: touch.identifier, x: touch.clientX, y: touch.clientY };
+                // Если касание в левой нижней четверти — это левый джойстик
+                if (touch.clientX < canvas.width / 2 && touch.clientY > canvas.height / 2) {
+                    moveJoy.id = touch.identifier;
+                    moveJoy.active = true;
+                }
+                // Если в правой нижней — правый джойстик
+                else if (touch.clientX > canvas.width / 2 && touch.clientY > canvas.height / 2) {
+                    aimJoy.id = touch.identifier;
+                    aimJoy.active = true;
                 }
             }
         });
 
         canvas.addEventListener('touchmove', (e) => {
             for (let touch of e.changedTouches) {
-                if (moveTouch && touch.identifier === moveTouch.id) {
-                    let dx = touch.clientX - moveTouch.lastX;
-                    let dy = touch.clientY - moveTouch.lastY;
-                    player.x += dx * 0.2;
-                    player.y += dy * 0.2;
-                    // Ограничение экрана
-                    player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
-                    player.y = Math.max(20, Math.min(canvas.height - 20, player.y));
-                    moveTouch.lastX = touch.clientX;
-                    moveTouch.lastY = touch.clientY;
+                if (touch.identifier === moveJoy.id) {
+                    let dx = touch.clientX - moveJoy.x;
+                    let dy = touch.clientY - moveJoy.y;
+                    moveJoy.angle = Math.atan2(dy, dx);
+                    // Движение игрока, если джойстик отклонен
+                    if (Math.hypot(dx, dy) > 10) {
+                        player.x += Math.cos(moveJoy.angle) * 4;
+                        player.y += Math.sin(moveJoy.angle) * 4;
+                    }
                 }
-                if (aimTouch && touch.identifier === aimTouch.id) {
-                    aimTouch.x = touch.clientX;
-                    aimTouch.y = touch.clientY;
+                if (touch.identifier === aimJoy.id) {
+                    let dx = touch.clientX - aimJoy.x;
+                    let dy = touch.clientY - aimJoy.y;
+                    aimJoy.angle = Math.atan2(dy, dx);
+                    // Поворот игрока за правым джойстиком
+                    player.angle = aimJoy.angle;
+                    // Автоматическая стрельба
+                    if (Math.hypot(dx, dy) > 10) {
+                        shoot();
+                    }
                 }
             }
         });
 
         canvas.addEventListener('touchend', (e) => {
             for (let touch of e.changedTouches) {
-                if (moveTouch && touch.identifier === moveTouch.id) moveTouch = null;
-                if (aimTouch && touch.identifier === aimTouch.id) aimTouch = null;
+                if (touch.identifier === moveJoy.id) {
+                    moveJoy.active = false;
+                    moveJoy.id = null;
+                }
+                if (touch.identifier === aimJoy.id) {
+                    aimJoy.active = false;
+                    aimJoy.id = null;
+                }
             }
         });
 
+        let shootCooldown = 0;
         function shoot() {
-            if (!aimTouch) return;
-            let dx = aimTouch.x - player.x;
-            let dy = aimTouch.y - player.y;
-            let dist = Math.hypot(dx, dy);
-            if (dist === 0) return;
+            if (shootCooldown > 0) return;
             bullets.push({
                 x: player.x,
                 y: player.y,
-                vx: (dx / dist) * 10,
-                vy: (dy / dist) * 10
+                vx: Math.cos(player.angle) * 15,
+                vy: Math.sin(player.angle) * 15
             });
+            shootCooldown = 10; // Задержка между выстрелами
+        }
+
+        function drawJoystick(joy) {
+            // Внешний круг
+            ctx.beginPath();
+            ctx.arc(joy.x, joy.y, joyRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            // Внутренняя палочка (визуально)
+            if (joy.active) {
+                ctx.beginPath();
+                ctx.moveTo(joy.x, joy.y);
+                ctx.lineTo(joy.x + Math.cos(joy.angle) * joyRadius, joy.y + Math.sin(joy.angle) * joyRadius);
+                ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            }
         }
 
         function gameLoop() {
             ctx.fillStyle = '#222';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = '#444';
-            ctx.strokeRect(0, 0, canvas.width, canvas.height);
+            
+            // Стены
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
 
-            // Поворот персонажа в сторону прицела (как в ХЛМ)
-            if (aimTouch) {
-                let dx = aimTouch.x - player.x;
-                let dy = aimTouch.y - player.y;
-                player.angle = Math.atan2(dy, dx);
+            if (shootCooldown > 0) shootCooldown--;
+
+            // Враг
+            if (enemy.alive) {
+                ctx.fillStyle = '#d32f2f';
+                ctx.fillRect(enemy.x - enemy.size/2, enemy.y - enemy.size/2, enemy.size, enemy.size);
+                // Полоска здоровья
+                ctx.fillStyle = 'red';
+                ctx.fillRect(enemy.x - 25, enemy.y - 30, enemy.health * 10, 5);
+            } else {
+                ctx.fillStyle = '#b71c1c';
+                ctx.beginPath();
+                ctx.arc(enemy.x, enemy.y, 40, 0, Math.PI * 2);
+                ctx.fill();
             }
 
-            // Рисуем персонажа (с учетом поворота)
+            // Рисуем игрока
             ctx.save();
             ctx.translate(player.x, player.y);
             ctx.rotate(player.angle);
             ctx.fillStyle = '#fff';
             ctx.fillRect(-player.size/2, -player.size/2, player.size, player.size);
-            // Картонная маска спереди
             ctx.fillStyle = '#a67c52';
             ctx.fillRect(0, -player.size/4, player.size/2, player.size/2);
             ctx.restore();
 
-            // Стрельба с задержкой
-            shootTimer++;
-            if (aimTouch && shootTimer > 10) {
-                shoot();
-                shootTimer = 0;
-            }
-
-            // Рисуем пули
+            // Пули
             for (let i = bullets.length - 1; i >= 0; i--) {
                 let b = bullets[i];
                 b.x += b.vx;
@@ -114,21 +157,22 @@
                 ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Удаляем пули за экраном
+                if (enemy.alive && b.x > enemy.x - enemy.size/2 && b.x < enemy.x + enemy.size/2 &&
+                    b.y > enemy.y - enemy.size/2 && b.y < enemy.y + enemy.size/2) {
+                    enemy.health--;
+                    if (enemy.health <= 0) enemy.alive = false;
+                    bullets.splice(i, 1); 
+                    continue;
+                }
+
                 if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
                     bullets.splice(i, 1);
                 }
             }
 
-            // Красная линия прицела
-            if (aimTouch) {
-                ctx.beginPath();
-                ctx.moveTo(player.x, player.y);
-                ctx.lineTo(aimTouch.x, aimTouch.y);
-                ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-            }
+            // Отрисовка джойстиков
+            drawJoystick(moveJoy);
+            drawJoystick(aimJoy);
 
             requestAnimationFrame(gameLoop);
         }
