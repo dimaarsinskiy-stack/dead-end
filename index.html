@@ -6,116 +6,107 @@
     <style>
         body { margin: 0; overflow: hidden; background: #000; touch-action: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: white; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
-        #fireBtn { position: absolute; bottom: 40px; right: 40px; width: 70px; height: 70px; background: rgba(255,0,0,0.4); border: 3px solid white; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-family: Arial; font-weight: bold; font-size: 18px; user-select: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: rgba(255,255,255,0.8); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+        
+        /* Кнопки */
+        #fireBtn { position: absolute; bottom: 30px; right: 30px; width: 80px; height: 80px; background: rgba(255,0,0,0.4); border: 3px solid white; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-family: Arial; font-weight: bold; font-size: 18px; user-select: none; }
+        #fireBtn:active { background: rgba(255,0,0,0.8); }
+        
+        #jumpBtn { position: absolute; bottom: 130px; right: 40px; width: 60px; height: 60px; background: rgba(0,255,0,0.4); border: 3px solid white; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-family: Arial; font-weight: bold; font-size: 14px; user-select: none; }
+        #jumpBtn:active { background: rgba(0,255,0,0.8); }
+
         /* Джойстик */
-        #joyBase { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; border: 3px solid rgba(255,255,255,0.4); border-radius: 50%; display: none; }
+        #joyBase { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; display: none; background: rgba(0,0,0,0.3); }
         #joyStick { position: absolute; width: 50px; height: 50px; background: rgba(255,255,255,0.6); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); }
     </style>
+    <!-- Подключаем движок Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
     <div id="crosshair"></div>
     <div id="fireBtn">FIRE</div>
+    <div id="jumpBtn">JUMP</div>
     <div id="joyBase"><div id="joyStick"></div></div>
     <canvas id="gameCanvas"></canvas>
 
     <script>
-        // --- 3D СЦЕНА ---
+        // --- НАСТРОЙКА 3D ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x1a1a1a);
+        scene.background = new THREE.Color(0x111111);
+        
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas') });
+        camera.position.y = 1.6; // Высота глаз
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: false });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Ограничение пикселей для FPS
 
-        // Свет
-        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(1, 1, 1); scene.add(dirLight);
+        // --- СВЕТ ---
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        dirLight.position.set(1, 2, 1);
+        scene.add(dirLight);
 
-        // Пол и стены
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-        floor.rotation.x = -Math.PI / 2; scene.add(floor);
-        const wallMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
-        scene.add(new THREE.Mesh(new THREE.BoxGeometry(100, 10, 1), wallMat).translateZ(-50));
-        scene.add(new THREE.Mesh(new THREE.BoxGeometry(100, 10, 1), wallMat).translateZ(50));
-        scene.add(new THREE.Mesh(new THREE.BoxGeometry(1, 10, 100), wallMat).translateX(-50));
-        scene.add(new THREE.Mesh(new THREE.BoxGeometry(1, 10, 100), wallMat).translateX(50));
+        // --- КАРТА (Пол и стены) ---
+        const grid = new THREE.GridHelper(100, 20, 0x555555, 0x222222);
+        scene.add(grid);
 
-        // Враги
+        const wallMat = new THREE.MeshBasicMaterial({ color: 0x444444 });
+        const wallGeo = new THREE.BoxGeometry(100, 10, 2);
+        
+        const wall1 = new THREE.Mesh(wallGeo, wallMat); wall1.position.set(0, 5, -50); scene.add(wall1);
+        const wall2 = new THREE.Mesh(wallGeo, wallMat); wall2.position.set(0, 5, 50); scene.add(wall2);
+        const wall3 = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 100), wallMat); wall3.position.set(-50, 5, 0); scene.add(wall3);
+        const wall4 = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 100), wallMat); wall4.position.set(50, 5, 0); scene.add(wall4);
+
+        // --- ВРАГИ ---
         const enemies = [];
         const enemyGeo = new THREE.BoxGeometry(2, 2, 2);
-        const enemyMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-        for (let i = 0; i < 5; i++) {
+        const enemyMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
+        function spawnEnemy() {
             const e = new THREE.Mesh(enemyGeo, enemyMat);
-            e.position.set((Math.random() - 0.5) * 40, 1, (Math.random() - 0.5) * 40);
+            e.position.set((Math.random() - 0.5) * 80, 1, (Math.random() - 0.5) * 80);
             scene.add(e); enemies.push(e);
         }
+        for (let i = 0; i < 10; i++) spawnEnemy();
 
-        // Оружие (вид от первого лица)
-        const gun = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.5), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-        gun.position.set(0.3, -0.2, -0.6);
-        camera.add(gun); scene.add(camera);
+        // --- ОРУЖИЕ ---
+        const gun = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.6), new THREE.MeshBasicMaterial({ color: 0x222222 }));
+        gun.position.set(0.3, -0.3, -0.6);
+        camera.add(gun);
+        scene.add(camera);
 
-        // --- ПУЛИ ---
-        const bullets = [];
-        const bulletGeo = new THREE.SphereGeometry(0.1, 8, 8);
-        const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-
-        // --- УПРАВЛЕНИЕ ---
+        // --- ФИЗИКА И УПРАВЛЕНИЕ ---
         let yaw = 0, pitch = 0;
         let moveX = 0, moveY = 0;
-        let touchId = null;
-        let joyTouchId = null;
+        let velocityY = 0;
+        let isGrounded = true;
+        let joyActive = false, joyTouchId = null;
+        let lookTouchId = null, lastLookX = 0, lastLookY = 0;
 
-        // Свайп для поворота (правая сторона)
-        document.addEventListener('touchstart', (e) => {
-            for (let touch of e.changedTouches) {
-                if (touch.clientX > window.innerWidth / 2 && touch.clientX < window.innerWidth - 100) {
-                    touchId = touch.identifier;
-                }
-            }
-        });
-
-        document.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            for (let touch of e.changedTouches) {
-                if (touch.identifier === touchId) {
-                    let dx = touch.movementX || 0;
-                    let dy = touch.movementY || 0;
-                    // Если movementX не работает, считаем вручную
-                    if (dx === 0) {
-                        dx = touch.clientX - (touch.prevX || touch.clientX);
-                        dy = touch.clientY - (touch.prevY || touch.clientY);
-                        touch.prevX = touch.clientX;
-                        touch.prevY = touch.clientY;
-                    }
-                    yaw -= dx * 0.005;
-                    pitch -= dy * 0.005;
-                    pitch = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, pitch));
-                }
-            }
-        });
-
-        document.addEventListener('touchend', (e) => {
-            for (let touch of e.changedTouches) {
-                if (touch.identifier === touchId) touchId = null;
-            }
-        });
-
-        // Джойстик (левая сторона)
         const joyBase = document.getElementById('joyBase');
         const joyStick = document.getElementById('joyStick');
-        let joyActive = false;
 
+        // Обработка касаний
         document.addEventListener('touchstart', (e) => {
             for (let touch of e.changedTouches) {
-                if (touch.clientX < window.innerWidth / 2 && touch.clientY > window.innerHeight / 2) {
-                    joyActive = true;
-                    joyTouchId = touch.identifier;
-                    joyBase.style.display = 'block';
-                    joyBase.style.left = (touch.clientX - 60) + 'px';
-                    joyBase.style.top = (touch.clientY - 60) + 'px';
+                let x = touch.clientX, y = touch.clientY;
+                
+                // Левый нижний угол — джойстик
+                if (x < window.innerWidth / 2 && y > window.innerHeight / 2) {
+                    if (!joyActive) {
+                        joyActive = true; joyTouchId = touch.identifier;
+                        joyBase.style.display = 'block';
+                        joyBase.style.left = (x - 60) + 'px';
+                        joyBase.style.top = (y - 60) + 'px';
+                    }
+                } 
+                // Остальная часть экрана — обзор
+                else if (x > 100 && x < window.innerWidth - 120) {
+                    if (lookTouchId === null) {
+                        lookTouchId = touch.identifier;
+                        lastLookX = x; lastLookY = y;
+                    }
                 }
             }
         });
@@ -123,6 +114,7 @@
         document.addEventListener('touchmove', (e) => {
             e.preventDefault();
             for (let touch of e.changedTouches) {
+                // Движение джойстика
                 if (touch.identifier === joyTouchId) {
                     let baseRect = joyBase.getBoundingClientRect();
                     let centerX = baseRect.left + 60;
@@ -131,12 +123,21 @@
                     let dy = touch.clientY - centerY;
                     let dist = Math.min(Math.hypot(dx, dy), 50);
                     let angle = Math.atan2(dy, dx);
-                    
+
                     joyStick.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
                     
-                    // Нормализованное движение
+                    // Жестко: вверх = вперед
                     moveX = Math.cos(angle) * (dist / 50);
-                    moveY = Math.sin(angle) * (dist / 50);
+                    moveY = Math.sin(angle) * (dist / 50); 
+                }
+                // Вращение камеры
+                if (touch.identifier === lookTouchId) {
+                    let dx = touch.clientX - lastLookX;
+                    let dy = touch.clientY - lastLookY;
+                    yaw -= dx * 0.005;
+                    pitch -= dy * 0.005;
+                    pitch = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, pitch));
+                    lastLookX = touch.clientX; lastLookY = touch.clientY;
                 }
             }
         });
@@ -144,68 +145,82 @@
         document.addEventListener('touchend', (e) => {
             for (let touch of e.changedTouches) {
                 if (touch.identifier === joyTouchId) {
-                    joyActive = false;
-                    joyTouchId = null;
+                    joyActive = false; joyTouchId = null;
                     joyBase.style.display = 'none';
-                    joyStick.style.transform = `translate(-50%, -50%)`;
                     moveX = 0; moveY = 0;
                 }
+                if (touch.identifier === lookTouchId) lookTouchId = null;
             }
         });
 
-        // Стрельба
-        const fireBtn = document.getElementById('fireBtn');
-        fireBtn.addEventListener('touchstart', (e) => {
+        // Кнопка прыжка
+        document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
             e.preventDefault();
-            
-            // Создаем пулю
+            if (isGrounded) { velocityY = 6; isGrounded = false; }
+        });
+
+        // Кнопка выстрела
+        const bullets = [];
+        const bulletGeo = new THREE.SphereGeometry(0.1, 8, 8);
+        const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+
+        document.getElementById('fireBtn').addEventListener('touchstart', (e) => {
+            e.preventDefault();
             const bullet = new THREE.Mesh(bulletGeo, bulletMat);
             bullet.position.copy(camera.position);
             
-            const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-            bullet.velocity = direction.multiplyScalar(1);
+            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            bullet.velocity = dir.multiplyScalar(1.5);
             
             scene.add(bullet);
             bullets.push(bullet);
         });
 
-        // Анимация
+        // --- ИГРОВОЙ ЦИКЛ ---
         function animate() {
             requestAnimationFrame(animate);
 
+            // Поворот камеры
             camera.rotation.order = 'YXZ';
             camera.rotation.y = yaw;
             camera.rotation.x = pitch;
 
-            // Движение через джойстик
+            // Движение
             if (joyActive) {
-                const speed = 0.2;
+                const speed = 0.15;
                 const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
                 const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 
-                camera.position.add(forward.multiplyScalar(moveY * speed));
+                // Джойстик
+                camera.position.add(forward.multiplyScalar(-moveY * speed));
                 camera.position.add(right.multiplyScalar(moveX * speed));
             }
 
-            // Ограничение стен
-            camera.position.x = Math.max(-49, Math.min(49, camera.position.x));
-            camera.position.z = Math.max(-49, Math.min(49, camera.position.z));
-            camera.position.y = 1.6;
+            // Прыжок (гравитация)
+            camera.position.y += velocityY * 0.05;
+            velocityY -= 0.3;
+            if (camera.position.y <= 1.6) {
+                camera.position.y = 1.6;
+                velocityY = 0;
+                isGrounded = true;
+            }
 
-            // Движение пуль
+            // Ограничения карты
+            camera.position.x = Math.max(-48, Math.min(48, camera.position.x));
+            camera.position.z = Math.max(-48, Math.min(48, camera.position.z));
+
+            // Пули
             bullets.forEach((b, i) => {
                 b.position.add(b.velocity);
-                // Проверка попадания
                 enemies.forEach(e => {
                     if (b.position.distanceTo(e.position) < 1.5) {
                         scene.remove(e);
-                        scene.remove(b);
                         enemies.splice(enemies.indexOf(e), 1);
+                        scene.remove(b);
                         bullets.splice(i, 1);
                     }
                 });
-                // Удаление пуль
-                if (b.position.length() > 200) {
+                if (b.position.length() > 100) {
                     scene.remove(b);
                     bullets.splice(i, 1);
                 }
