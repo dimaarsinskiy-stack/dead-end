@@ -4,28 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        body { margin: 0; overflow: hidden; background: #000; touch-action: none; }
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: rgba(255,255,255,0.8); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
         
-        /* Кнопки */
-        #fireBtn { position: absolute; bottom: 30px; right: 30px; width: 80px; height: 80px; background: rgba(255,0,0,0.4); border: 3px solid white; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-family: Arial; font-weight: bold; font-size: 18px; user-select: none; }
-        #fireBtn:active { background: rgba(255,0,0,0.8); }
+        /* ЖЁСТКИЙ ПОВОРОТ */
+        @media screen and (orientation: portrait) {
+            canvas { width: 100vh; height: 100vw; transform: rotate(90deg); transform-origin: bottom left; position: absolute; top: -100vw; left: 0; }
+            #ui, #crosshair, #joyBase, #hpBar { transform: rotate(90deg); transform-origin: center; position: absolute; }
+        }
+
+        #crosshair { top: 50%; left: 50%; width: 8px; height: 8px; background: rgba(255,255,255,0.8); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+        #hpBar { top: 20px; left: 20px; width: 200px; height: 20px; background: #333; border: 2px solid white; pointer-events: none; }
+        #hpFill { width: 100%; height: 100%; background: #00ff00; transition: width 0.2s; }
         
-        #jumpBtn { position: absolute; bottom: 130px; right: 40px; width: 60px; height: 60px; background: rgba(0,255,0,0.4); border: 3px solid white; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-family: Arial; font-weight: bold; font-size: 14px; user-select: none; }
+        #ui { bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 15px; align-items: center;}
+        .btn { width: 70px; height: 70px; background: rgba(255,0,0,0.4); border: 3px solid white; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-family: Arial; font-weight: bold; font-size: 16px; user-select: none; }
+        .btn:active { background: rgba(255,0,0,0.8); }
+        #jumpBtn { background: rgba(0,255,0,0.4); }
         #jumpBtn:active { background: rgba(0,255,0,0.8); }
 
-        /* Джойстик */
-        #joyBase { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; display: none; background: rgba(0,0,0,0.3); }
+        #joyBase { bottom: 40px; left: 40px; width: 120px; height: 120px; border: 3px solid rgba(255,255,255,0.2); border-radius: 50%; display: none; background: rgba(0,0,0,0.3); }
         #joyStick { position: absolute; width: 50px; height: 50px; background: rgba(255,255,255,0.6); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); }
     </style>
-    <!-- Подключаем движок Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
     <div id="crosshair"></div>
-    <div id="fireBtn">FIRE</div>
-    <div id="jumpBtn">JUMP</div>
+    <div id="hpBar"><div id="hpFill"></div></div>
+    <div id="ui">
+        <div class="btn" id="jumpBtn">JUMP</div>
+        <div class="btn" id="fireBtn">FIRE</div>
+    </div>
     <div id="joyBase"><div id="joyStick"></div></div>
     <canvas id="gameCanvas"></canvas>
 
@@ -35,64 +44,72 @@
         scene.background = new THREE.Color(0x111111);
         
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.y = 1.6; // Высота глаз
-        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: false });
+        camera.position.set(0, 1.6, 0); 
+        
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: false, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Ограничение пикселей для FPS
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-        // --- СВЕТ ---
-        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        // Свет
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
         dirLight.position.set(1, 2, 1);
         scene.add(dirLight);
 
-        // --- КАРТА (Пол и стены) ---
-        const grid = new THREE.GridHelper(100, 20, 0x555555, 0x222222);
-        scene.add(grid);
-
-        const wallMat = new THREE.MeshBasicMaterial({ color: 0x444444 });
-        const wallGeo = new THREE.BoxGeometry(100, 10, 2);
+        // --- КАРТА (Стены и укрытия) ---
+        const wallMat = new THREE.MeshBasicMaterial({ color: 0x333333 });
+        const boxGeo = new THREE.BoxGeometry(4, 4, 4);
         
-        const wall1 = new THREE.Mesh(wallGeo, wallMat); wall1.position.set(0, 5, -50); scene.add(wall1);
-        const wall2 = new THREE.Mesh(wallGeo, wallMat); wall2.position.set(0, 5, 50); scene.add(wall2);
-        const wall3 = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 100), wallMat); wall3.position.set(-50, 5, 0); scene.add(wall3);
-        const wall4 = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 100), wallMat); wall4.position.set(50, 5, 0); scene.add(wall4);
-
-        // --- ВРАГИ ---
-        const enemies = [];
-        const enemyGeo = new THREE.BoxGeometry(2, 2, 2);
-        const enemyMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-
-        function spawnEnemy() {
-            const e = new THREE.Mesh(enemyGeo, enemyMat);
-            e.position.set((Math.random() - 0.5) * 80, 1, (Math.random() - 0.5) * 80);
-            scene.add(e); enemies.push(e);
+        // Внешние стены
+        scene.add(new THREE.Mesh(new THREE.BoxGeometry(100, 10, 2), wallMat).translateZ(-50));
+        scene.add(new THREE.Mesh(new THREE.BoxGeometry(100, 10, 2), wallMat).translateZ(50));
+        scene.add(new THREE.Mesh(new THREE.BoxGeometry(2, 10, 100), wallMat).translateX(-50));
+        scene.add(new THREE.Mesh(new THREE.BoxGeometry(2, 10, 100), wallMat).translateX(50));
+        
+        // Укрытия (ящики)
+        const obstacles = [];
+        for(let i=0; i<15; i++) {
+            let box = new THREE.Mesh(boxGeo, wallMat);
+            box.position.set((Math.random()-0.5)*80, 2, (Math.random()-0.5)*80);
+            scene.add(box);
+            obstacles.push(box);
         }
-        for (let i = 0; i < 10; i++) spawnEnemy();
 
         // --- ОРУЖИЕ ---
-        const gun = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.6), new THREE.MeshBasicMaterial({ color: 0x222222 }));
+        let gun = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.6), new THREE.MeshBasicMaterial({ color: 0x555555 }));
         gun.position.set(0.3, -0.3, -0.6);
         camera.add(gun);
         scene.add(camera);
 
-        // --- ФИЗИКА И УПРАВЛЕНИЕ ---
+        // --- ВРАГИ И КРОВЬ ---
+        const enemies = [];
+        const bloodParticles = [];
+        const enemyGeo = new THREE.BoxGeometry(2, 2, 2);
+        const enemyMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const bloodMat = new THREE.MeshBasicMaterial({ color: 0xaa0000 });
+
+        for (let i = 0; i < 10; i++) {
+            const e = new THREE.Mesh(enemyGeo, enemyMat);
+            e.position.set((Math.random() - 0.5) * 80, 1, (Math.random() - 0.5) * 80);
+            scene.add(e); enemies.push({ mesh: e, hp: 3, speed: 0.03, shootTimer: Math.random()*60 });
+        }
+
+        // --- ФИЗИКА И ИГРОК ---
+        let playerHealth = 100;
+        const hpFill = document.getElementById('hpFill');
         let yaw = 0, pitch = 0;
         let moveX = 0, moveY = 0;
-        let velocityY = 0;
-        let isGrounded = true;
+        let velocityY = 0, isGrounded = true;
         let joyActive = false, joyTouchId = null;
         let lookTouchId = null, lastLookX = 0, lastLookY = 0;
 
         const joyBase = document.getElementById('joyBase');
         const joyStick = document.getElementById('joyStick');
 
-        // Обработка касаний
+        // --- УПРАВЛЕНИЕ ---
         document.addEventListener('touchstart', (e) => {
             for (let touch of e.changedTouches) {
                 let x = touch.clientX, y = touch.clientY;
-                
-                // Левый нижний угол — джойстик
                 if (x < window.innerWidth / 2 && y > window.innerHeight / 2) {
                     if (!joyActive) {
                         joyActive = true; joyTouchId = touch.identifier;
@@ -100,9 +117,7 @@
                         joyBase.style.left = (x - 60) + 'px';
                         joyBase.style.top = (y - 60) + 'px';
                     }
-                } 
-                // Остальная часть экрана — обзор
-                else if (x > 100 && x < window.innerWidth - 120) {
+                } else if (x > 100 && x < window.innerWidth - 120) {
                     if (lookTouchId === null) {
                         lookTouchId = touch.identifier;
                         lastLookX = x; lastLookY = y;
@@ -114,7 +129,6 @@
         document.addEventListener('touchmove', (e) => {
             e.preventDefault();
             for (let touch of e.changedTouches) {
-                // Движение джойстика
                 if (touch.identifier === joyTouchId) {
                     let baseRect = joyBase.getBoundingClientRect();
                     let centerX = baseRect.left + 60;
@@ -125,12 +139,9 @@
                     let angle = Math.atan2(dy, dx);
 
                     joyStick.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
-                    
-                    // Жестко: вверх = вперед
                     moveX = Math.cos(angle) * (dist / 50);
                     moveY = Math.sin(angle) * (dist / 50); 
                 }
-                // Вращение камеры
                 if (touch.identifier === lookTouchId) {
                     let dx = touch.clientX - lastLookX;
                     let dy = touch.clientY - lastLookY;
@@ -153,25 +164,22 @@
             }
         });
 
-        // Кнопка прыжка
         document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
             e.preventDefault();
             if (isGrounded) { velocityY = 6; isGrounded = false; }
         });
 
-        // Кнопка выстрела
+        // --- СТРЕЛЬБА ---
         const bullets = [];
-        const bulletGeo = new THREE.SphereGeometry(0.1, 8, 8);
+        const bulletGeo = new THREE.SphereGeometry(0.1, 4, 4);
         const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
         document.getElementById('fireBtn').addEventListener('touchstart', (e) => {
             e.preventDefault();
             const bullet = new THREE.Mesh(bulletGeo, bulletMat);
             bullet.position.copy(camera.position);
-            
             const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-            bullet.velocity = dir.multiplyScalar(1.5);
-            
+            bullet.velocity = dir.multiplyScalar(2);
             scene.add(bullet);
             bullets.push(bullet);
         });
@@ -180,7 +188,6 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // Поворот камеры
             camera.rotation.order = 'YXZ';
             camera.rotation.y = yaw;
             camera.rotation.x = pitch;
@@ -190,13 +197,11 @@
                 const speed = 0.15;
                 const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
                 const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-                
-                // Джойстик
                 camera.position.add(forward.multiplyScalar(-moveY * speed));
                 camera.position.add(right.multiplyScalar(moveX * speed));
             }
 
-            // Прыжок (гравитация)
+            // Прыжок
             camera.position.y += velocityY * 0.05;
             velocityY -= 0.3;
             if (camera.position.y <= 1.6) {
@@ -205,26 +210,65 @@
                 isGrounded = true;
             }
 
-            // Ограничения карты
+            // Ограничения
             camera.position.x = Math.max(-48, Math.min(48, camera.position.x));
             camera.position.z = Math.max(-48, Math.min(48, camera.position.z));
+
+            // Логика врагов
+            enemies.forEach(e => {
+                if (e.hp > 0) {
+                    let dx = camera.position.x - e.mesh.position.x;
+                    let dz = camera.position.z - e.mesh.position.z;
+                    let dist = Math.hypot(dx, dz);
+                    
+                    if (dist < 30) { // Агрессия
+                        e.mesh.position.x += (dx/dist) * e.speed;
+                        e.mesh.position.z += (dz/dist) * e.speed;
+                        e.mesh.lookAt(camera.position.x, 1, camera.position.z);
+                        
+                        // Стрельба врагов
+                        e.shootTimer--;
+                        if (e.shootTimer <= 0 && dist < 20) {
+                            playerHealth -= 10;
+                            hpFill.style.width = playerHealth + '%';
+                            if (playerHealth <= 0) { alert("Ты мертв!"); location.reload(); }
+                            e.shootTimer = 60;
+                        }
+                    }
+                }
+            });
 
             // Пули
             bullets.forEach((b, i) => {
                 b.position.add(b.velocity);
                 enemies.forEach(e => {
-                    if (b.position.distanceTo(e.position) < 1.5) {
-                        scene.remove(e);
-                        enemies.splice(enemies.indexOf(e), 1);
+                    if (e.hp > 0 && b.position.distanceTo(e.mesh.position) < 1.5) {
+                        e.hp--;
+                        // Кровь
+                        for(let j=0; j<5; j++) {
+                            let p = new THREE.Mesh(bulletGeo, bloodMat);
+                            p.position.copy(b.position);
+                            p.userData.v = new THREE.Vector3((Math.random()-0.5), Math.random(), (Math.random()-0.5)).multiplyScalar(0.2);
+                            p.userData.life = 30;
+                            scene.add(p);
+                            bloodParticles.push(p);
+                        }
                         scene.remove(b);
                         bullets.splice(i, 1);
+                        if (e.hp <= 0) scene.remove(e.mesh);
                     }
                 });
-                if (b.position.length() > 100) {
-                    scene.remove(b);
-                    bullets.splice(i, 1);
-                }
+                if (b.position.length() > 100) { scene.remove(b); bullets.splice(i, 1); }
             });
+
+            // Кровь
+            for(let i = bloodParticles.length - 1; i >= 0; i--) {
+                let p = bloodParticles[i];
+                p.position.add(p.userData.v);
+                p.userData.v.y -= 0.01;
+                p.userData.life--;
+                if (p.userData.life <= 0) { scene.remove(p); bloodParticles.splice(i, 1); }
+            }
 
             renderer.render(scene, camera);
         }
