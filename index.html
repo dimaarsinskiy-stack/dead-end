@@ -12,29 +12,23 @@
         }
         #game-wrapper { width: 100vw; height: 100vh; position: relative; }
 
-        /* HUD */
         #hud { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background: #00ff00; border-radius: 50%; transform: translate(-50%, -50%); }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #00ff00; border-radius: 50%; transform: translate(-50%, -50%); }
         
-        /* Круговой радар */
         #radar { position: absolute; top: 20px; right: 20px; width: 120px; height: 120px; border: 2px solid #00ff00; border-radius: 50%; background: rgba(0, 255, 0, 0.1); overflow: hidden; }
         .radar-dot { position: absolute; width: 6px; height: 6px; background: red; border-radius: 50%; transform: translate(-50%, -50%); }
         .radar-player { position: absolute; top: 50%; left: 50%; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 10px solid #00ff00; transform: translate(-50%, -50%); }
 
-        /* Полоса здоровья */
         #hp-text { position: absolute; bottom: 30px; left: 30px; color: #fff; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 0 #000; }
         #ammo-text { position: absolute; bottom: 50px; right: 20px; color: #fff; font-size: 30px; font-weight: bold; text-shadow: 2px 2px 0 #000; }
         #weapon-text { position: absolute; bottom: 20px; right: 20px; color: #aaa; font-size: 20px; }
-        #score-text { position: absolute; top: 20px; left: 20px; color: #fff; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 0 #000; }
 
-        /* Кнопки */
         #ui { position: absolute; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 15px; align-items: center; pointer-events: auto;}
         .btn { width: 80px; height: 80px; background: rgba(255,0,0,0.3); border: 3px solid #fff; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-weight: bold; font-size: 18px; user-select: none; }
         .btn:active { background: rgba(255,0,0,0.8); }
         #jumpBtn { background: rgba(0,100,255,0.3); width: 60px; height: 60px; font-size: 14px;}
         #jumpBtn:active { background: rgba(0,100,255,0.8); }
         #reloadBtn { background: rgba(255,150,0,0.3); width: 60px; height: 60px; font-size: 14px; position: absolute; bottom: 120px; right: 30px;}
-        #weaponSwitchBtn { background: rgba(150,0,255,0.3); width: 60px; height: 60px; font-size: 14px; position: absolute; bottom: 190px; right: 30px; pointer-events: auto;}
 
         #joyBase { position: absolute; bottom: 40px; left: 40px; width: 140px; height: 140px; border: 3px solid rgba(255,255,255,0.2); border-radius: 50%; display: none; background: rgba(0,0,0,0.3); pointer-events: auto;}
         #joyStick { position: absolute; width: 60px; height: 60px; background: rgba(255,255,255,0.5); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); }
@@ -53,7 +47,6 @@
             <div id="hp-text">HP: 100</div>
             <div id="ammo-text">30 / 90</div>
             <div id="weapon-text">AK-47</div>
-            <div id="score-text">Счет: 0</div>
         </div>
         
         <div id="ui">
@@ -61,7 +54,6 @@
             <div class="btn" id="fireBtn">FIRE</div>
         </div>
         <div class="btn" id="reloadBtn">RELOAD</div>
-        <div class="btn" id="weaponSwitchBtn">WPN</div>
         <div id="joyBase"><div id="joyStick"></div></div>
 
         <div id="gameOverScreen">
@@ -73,7 +65,7 @@
     </div>
 
     <script>
-        // --- АУДИО ---
+        // --- ЗВУКИ ---
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         const audioCtx = new AudioContext();
         function playSound(type) {
@@ -81,23 +73,16 @@
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.connect(gain); gain.connect(audioCtx.destination);
-            
             if (type === 'shoot') {
                 osc.type = 'square'; osc.frequency.setValueAtTime(300, audioCtx.currentTime);
                 osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
                 gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
                 gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
                 osc.start(); osc.stop(audioCtx.currentTime + 0.1);
-            } else if (type === 'shotgun') {
-                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.3);
             }
         }
 
-        // --- 3D ---
+        // --- 3D СЦЕНА ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0a0a0a);
         scene.fog = new THREE.Fog(0x0a0a0a, 10, 60);
@@ -114,7 +99,7 @@
         dirLight.position.set(10, 20, 10);
         scene.add(dirLight);
 
-        // --- КАРТА (Лабиринт) ---
+        // --- КАРТА ---
         const mapSize = 100;
         const wallMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
@@ -129,15 +114,12 @@
         scene.add(new THREE.Mesh(new THREE.BoxGeometry(2, 10, mapSize), wallMat).translateX(-mapSize/2));
         scene.add(new THREE.Mesh(new THREE.BoxGeometry(2, 10, mapSize), wallMat).translateX(mapSize/2));
 
-        // Внутренние стены (лабиринт)
-        const walls = [];
-        for(let i=0; i<40; i++) {
+        for(let i=0; i<30; i++) {
             let w = Math.random() * 15 + 5;
             let h = Math.random() * 5 + 2;
             let box = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), wallMat);
             box.position.set((Math.random()-0.5)*90, h/2, (Math.random()-0.5)*90);
             scene.add(box);
-            walls.push(box);
         }
 
         // --- ОРУЖИЕ ---
@@ -152,24 +134,20 @@
 
         const weapons = {
             1: { name: 'Pistol', damage: 1, ammo: 12, maxAmmo: 12, reserve: 999, cooldown: 20, auto: false },
-            2: { name: 'AK-47', damage: 1, ammo: 30, maxAmmo: 30, reserve: 90, cooldown: 8, auto: true },
-            3: { name: 'Shotgun', damage: 3, ammo: 8, maxAmmo: 8, reserve: 32, cooldown: 40, pellets: 5, auto: false }
+            2: { name: 'AK-47', damage: 1, ammo: 30, maxAmmo: 30, reserve: 90, cooldown: 8, auto: true }
         };
         let currentWeapon = 2;
         let ammo = weapons[currentWeapon].ammo;
 
         // --- ИГРОК ---
         let playerHealth = 100;
-        let score = 0;
         let isReloading = false;
         let reloadTimer = 0;
-        let canShoot = true;
         let shootCooldown = 0;
 
         const hpText = document.getElementById('hp-text');
         const ammoText = document.getElementById('ammo-text');
         const weaponText = document.getElementById('weapon-text');
-        const scoreText = document.getElementById('score-text');
         const gameOverScreen = document.getElementById('gameOverScreen');
         const radar = document.getElementById('radar');
         let radarDots = [];
@@ -178,7 +156,6 @@
             hpText.innerText = 'HP: ' + Math.max(0, playerHealth);
             ammoText.innerText = ammo + ' / ' + weapons[currentWeapon].reserve;
             weaponText.innerText = weapons[currentWeapon].name;
-            scoreText.innerText = 'Счет: ' + score;
         }
 
         // --- ВРАГИ ---
@@ -191,8 +168,6 @@
             e.position.set((Math.random()-0.5)*80, 1, (Math.random()-0.5)*80);
             scene.add(e);
             enemies.push({ mesh: e, hp: 2, timer: Math.random() * 100, shootCd: 0 });
-            
-            // Точка на радаре
             let dot = document.createElement('div');
             dot.className = 'radar-dot';
             radar.appendChild(dot);
@@ -201,11 +176,10 @@
 
         for(let i=0; i<10; i++) spawnEnemy();
 
-        // --- КРОВЬ ---
+        // --- ЧАСТИЦЫ ---
         const bloodGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
         const bloodMat = new THREE.MeshBasicMaterial({ color: 0xaa0000 });
         const bloodParticles = [];
-        const bloodDecals = [];
         function spawnBlood(pos) {
             for(let i=0; i<8; i++) {
                 let p = new THREE.Mesh(bloodGeo, bloodMat);
@@ -215,13 +189,6 @@
                 scene.add(p);
                 bloodParticles.push(p);
             }
-            // Лужа на полу
-            let decal = new THREE.Mesh(new THREE.CircleGeometry(Math.random()*0.5+0.5, 8), new THREE.MeshBasicMaterial({ color: 0x550000 }));
-            decal.rotation.x = -Math.PI/2;
-            decal.position.set(pos.x, 0.01, pos.z);
-            scene.add(decal);
-            bloodDecals.push(decal);
-            if(bloodDecals.length > 50) { scene.remove(bloodDecals[0]); bloodDecals.shift(); }
         }
 
         // --- УПРАВЛЕНИЕ ---
@@ -288,7 +255,6 @@
             }
         });
 
-        // Кнопки
         document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
             e.preventDefault();
             if (isGrounded) { velocityY = 6; isGrounded = false; }
@@ -305,63 +271,34 @@
             }
         });
 
-        document.getElementById('weaponSwitchBtn').addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            currentWeapon = currentWeapon === 3 ? 1 : currentWeapon + 1;
-            ammo = weapons[currentWeapon].ammo;
-            updateHUD();
-        });
-
-        // --- СТРЕЛЬБА ---
+        // --- СТРЕЛЬБА С ПУЛЯМИ (ЛЕТЯТ В ПРИЦЕЛ) ---
         const bullets = [];
-        const bulletGeo = new THREE.SphereGeometry(0.05, 4, 4);
+        const bulletGeo = new THREE.SphereGeometry(0.08, 6, 6);
         const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-        const raycaster = new THREE.Raycaster();
-        const center = new THREE.Vector2(0, 0);
 
         function shoot() {
-            if (isReloading || shootCooldown > 0) return;
-            let w = weapons[currentWeapon];
-            if (ammo <= 0) return;
-            
+            if (isReloading || shootCooldown > 0 || ammo <= 0) return;
             ammo--;
-            shootCooldown = w.cooldown;
-            if (currentWeapon === 3) playSound('shotgun'); else playSound('shoot');
-            
-            pitch += Math.random() * 0.03;
+            shootCooldown = weapons[currentWeapon].cooldown;
+            playSound('shoot');
+            pitch += Math.random() * 0.01;
             gunGroup.position.z = -0.3;
 
-            // Дробовик стреляет веером
-            let pellets = w.pellets || 1;
-            for(let i=0; i<pellets; i++) {
-                let spreadX = (Math.random() - 0.5) * (w.spread || 0.1);
-                let spreadY = (Math.random() - 0.5) * (w.spread || 0.1);
-                
-                raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), camera);
-                let intersects = raycaster.intersectObjects(enemies.map(e => e.mesh));
-                
-                if (intersects.length > 0) {
-                    let hitObj = intersects[0].object;
-                    let enemyData = enemies.find(e => e.mesh === hitObj);
-                    if (enemyData) {
-                        enemyData.hp -= w.damage;
-                        spawnBlood(intersects[0].point);
-                        if (enemyData.hp <= 0) {
-                            scene.remove(enemyData.mesh);
-                            enemies.splice(enemies.indexOf(enemyData), 1);
-                            score += 100;
-                            updateHUD();
-                            spawnEnemy();
-                        }
-                    }
-                }
-            }
+            // Создаем пулю, которая летит ровно по центру
+            const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+            bullet.position.copy(camera.position);
+            
+            // Направление строго в центр экрана
+            const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            bullet.velocity = direction.multiplyScalar(2.5); // Скорость пули
+            
+            scene.add(bullet);
+            bullets.push(bullet);
             updateHUD();
         }
 
         // --- ГЛАВНЫЙ ЦИКЛ ---
-        let lastTime = performance.now();
-        function animate(time) {
+        function animate() {
             requestAnimationFrame(animate);
 
             if (shootCooldown > 0) shootCooldown--;
@@ -392,7 +329,6 @@
                 const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 forward.y = 0; forward.normalize();
                 right.y = 0; right.normalize();
-                
                 camera.position.add(forward.multiplyScalar(-moveY * speed));
                 camera.position.add(right.multiplyScalar(moveX * speed));
             }
@@ -405,6 +341,34 @@
 
             camera.position.x = Math.max(-48, Math.min(48, camera.position.x));
             camera.position.z = Math.max(-48, Math.min(48, camera.position.z));
+
+            // Движение и коллизии пуль
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                let b = bullets[i];
+                b.position.add(b.velocity);
+
+                // Проверка на попадание во врагов
+                let hit = false;
+                for (let j = 0; j < enemies.length; j++) {
+                    let e = enemies[j];
+                    if (b.position.distanceTo(e.mesh.position) < 1.5) {
+                        e.hp--;
+                        spawnBlood(b.position);
+                        hit = true;
+                        if (e.hp <= 0) {
+                            scene.remove(e.mesh);
+                            enemies.splice(j, 1);
+                            spawnEnemy();
+                        }
+                        break;
+                    }
+                }
+
+                if (hit || b.position.length() > 100) {
+                    scene.remove(b);
+                    bullets.splice(i, 1);
+                }
+            }
 
             // Враги
             enemies.forEach(e => {
@@ -433,7 +397,7 @@
                 }
             });
 
-            // Обновление радара
+            // Радар
             radarDots.forEach(rd => {
                 if (enemies.includes(rd.mesh)) {
                     let dx = rd.mesh.position.x - camera.position.x;
@@ -470,7 +434,7 @@
         }
 
         updateHUD();
-        animate(performance.now());
+        animate();
     </script>
 </body>
 </html>
